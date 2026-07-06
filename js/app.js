@@ -37,6 +37,32 @@
   // ---------- Speech ----------
 
   var speechUnlocked = false;
+  var bestVoice = null;
+
+  function pickBestVoice() {
+    if (!("speechSynthesis" in window)) return;
+    var voices = window.speechSynthesis.getVoices();
+    var ptVoices = voices.filter(function (v) {
+      return v.lang && v.lang.toLowerCase().indexOf("pt") === 0;
+    });
+    if (ptVoices.length === 0) {
+      bestVoice = null;
+      return;
+    }
+    // Prefer higher-quality voices (iOS labels downloaded ones "Enhanced"/"Premium").
+    var enhanced = ptVoices.find(function (v) {
+      return /enhanced|premium|neural/i.test(v.name);
+    });
+    var ptBR = ptVoices.find(function (v) {
+      return v.lang.toLowerCase() === "pt-br";
+    });
+    bestVoice = enhanced || ptBR || ptVoices[0];
+  }
+
+  if ("speechSynthesis" in window) {
+    pickBestVoice();
+    window.speechSynthesis.onvoiceschanged = pickBestVoice;
+  }
 
   function unlockSpeech() {
     if (speechUnlocked || !("speechSynthesis" in window)) return;
@@ -51,7 +77,9 @@
     window.speechSynthesis.cancel();
     var utter = new SpeechSynthesisUtterance(text);
     utter.lang = "pt-BR";
-    utter.rate = 1;
+    if (bestVoice) utter.voice = bestVoice;
+    utter.rate = 0.98;
+    utter.pitch = 1;
     window.speechSynthesis.speak(utter);
   }
 
