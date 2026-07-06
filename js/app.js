@@ -2,11 +2,13 @@
   "use strict";
 
   var STORAGE_KEY = "focoEmPassos.routines.v1";
+  var NOTES_STORAGE_KEY = "focoEmPassos.notes.v1";
 
   var views = {
     home: document.getElementById("view-home"),
     editor: document.getElementById("view-editor"),
     run: document.getElementById("view-run"),
+    notes: document.getElementById("view-notes"),
   };
 
   function showView(name) {
@@ -32,6 +34,19 @@
 
   function uid() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  function loadNotes() {
+    try {
+      var raw = localStorage.getItem(NOTES_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveNotes(notes) {
+    localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(notes));
   }
 
   // ---------- Speech ----------
@@ -153,6 +168,10 @@
   });
   document.getElementById("btn-quick-list").addEventListener("click", function () {
     openEditor(null, { quick: true });
+  });
+  document.getElementById("btn-open-notes").addEventListener("click", function () {
+    renderNotesView();
+    showView("notes");
   });
 
   // ---------- Editor view ----------
@@ -291,6 +310,36 @@
   var controlsWaitingEl = document.getElementById("run-controls-waiting");
   var controlsFinishedEl = document.getElementById("run-controls-finished");
   var pauseResumeBtn = document.getElementById("btn-pause-resume");
+  var notePanelEl = document.getElementById("note-panel");
+  var noteTextEl = document.getElementById("note-text");
+
+  document.getElementById("btn-toggle-note").addEventListener("click", function () {
+    if (!runState) return;
+    notePanelEl.hidden = !notePanelEl.hidden;
+    if (!notePanelEl.hidden) noteTextEl.focus();
+  });
+  document.getElementById("btn-cancel-note").addEventListener("click", function () {
+    noteTextEl.value = "";
+    notePanelEl.hidden = true;
+  });
+  document.getElementById("btn-save-note").addEventListener("click", function () {
+    var text = noteTextEl.value.trim();
+    if (text) addNote(text);
+    noteTextEl.value = "";
+    notePanelEl.hidden = true;
+  });
+
+  function addNote(text) {
+    var notes = loadNotes();
+    notes.push({
+      id: uid(),
+      ts: Date.now(),
+      routineName: runState ? runState.routineName : "",
+      taskName: runState ? runState.tasks[runState.index].name : "",
+      text: text,
+    });
+    saveNotes(notes);
+  }
 
   function startRun(tasks, routineName) {
     runState = {
@@ -321,6 +370,8 @@
     pauseResumeBtn.textContent = "⏸ Pausar";
     runTimerEl.classList.remove("time-up");
     runStatusEl.textContent = "";
+    noteTextEl.value = "";
+    notePanelEl.hidden = true;
 
     updateRunHeader();
 
@@ -398,6 +449,7 @@
   }
 
   function finishRun() {
+    notePanelEl.hidden = true;
     controlsActiveEl.hidden = true;
     controlsWaitingEl.hidden = true;
     controlsFinishedEl.hidden = false;
@@ -414,6 +466,7 @@
     if (runState && !confirm("Parar a rotina agora?")) return;
     clearInterval(timerInterval);
     window.speechSynthesis && window.speechSynthesis.cancel();
+    notePanelEl.hidden = true;
     runState = null;
     renderHome();
     showView("home");
@@ -424,6 +477,135 @@
     renderHome();
     showView("home");
   });
+
+  // ---------- Notes view ----------
+
+  var notesDaysEl = document.getElementById("notes-days");
+  var notesEmptyEl = document.getElementById("notes-empty");
+
+  document.getElementById("btn-back-from-notes").addEventListener("click", function () {
+    renderHome();
+    showView("home");
+  });
+
+  function dateKeyOf(ts) {
+    var d = new Date(ts);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+
+  function formatDateLabel(key) {
+    var parts = key.split("-");
+    return parts[2] + "/" + parts[1] + "/" + parts[0];
+  }
+
+  function formatTime(ts) {
+    var d = new Date(ts);
+    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+
+  function renderNotesView() {
+    var notes = loadNotes().slice().sort(function (a, b) {
+      return b.ts - a.ts;
+    });
+    notesDaysEl.innerHTML = "";
+    notesEmptyEl.hidden = notes.length > 0;
+
+    var dayMap = {};
+    var dayOrder = [];
+    notes.forEach(function (n) {
+      var key = dateKeyOf(n.ts);
+      if (!dayMap[key]) {
+        dayMap[key] = [];
+        dayOrder.push(key);
+      }
+      dayMap[key].push(n);
+    });
+
+    dayOrder.forEach(function (key) {
+      var dayNotes = dayMap[key];
+      var dayEl = document.createElement("div");
+      dayEl.className = "notes-day";
+
+      var header = document.createElement("div");
+      header.className = "notes-day-header";
+      header.innerHTML =
+        '<span class="day-label"></span>' +
+        '<button class="copy-day">Copiar</button>' +
+        '<button class="share-day">Compartilhar</button>';
+      header.querySelector(".day-label").textContent = formatDateLabel(key) + " (" + dayNotes.length + ")";
+      header.querySelector(".copy-day").addEventListener("click", function () {
+        copyDay(key);
+      });
+      header.querySelector(".share-day").addEventListener("click", function () {
+        shareDay(key);
+      });
+      dayEl.appendChild(header);
+
+      dayNotes.forEach(function (n) {
+        var card = document.createElement("div");
+        card.className = "note-card";
+        card.innerHTML = '<button class="delete-note" aria-label="Excluir">✕</button><div class="meta"></div><div class="text"></div>';
+        card.querySelector(".meta").textContent = formatTime(n.ts) + " · " + n.routineName + (n.taskName ? " – " + n.taskName : "");
+        card.querySelector(".text").textContent = n.text;
+        card.querySelector(".delete-note").addEventListener("click", function () {
+          deleteNote(n.id);
+        });
+        dayEl.appendChild(card);
+      });
+
+      notesDaysEl.appendChild(dayEl);
+    });
+  }
+
+  function deleteNote(id) {
+    var notes = loadNotes().filter(function (n) {
+      return n.id !== id;
+    });
+    saveNotes(notes);
+    renderNotesView();
+  }
+
+  function textForDay(key) {
+    var notes = loadNotes()
+      .filter(function (n) {
+        return dateKeyOf(n.ts) === key;
+      })
+      .sort(function (a, b) {
+        return a.ts - b.ts;
+      });
+    var lines = ["Notas — " + formatDateLabel(key), ""];
+    notes.forEach(function (n) {
+      lines.push("• [" + formatTime(n.ts) + "] " + n.routineName + (n.taskName ? " – " + n.taskName : ""));
+      lines.push("  " + n.text);
+      lines.push("");
+    });
+    return lines.join("\n").trim();
+  }
+
+  function copyDay(key) {
+    var text = textForDay(key);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(text)
+        .then(function () {
+          alert("Notas copiadas! Cole no Notion.");
+        })
+        .catch(function () {
+          prompt("Copie o texto abaixo:", text);
+        });
+    } else {
+      prompt("Copie o texto abaixo:", text);
+    }
+  }
+
+  function shareDay(key) {
+    var text = textForDay(key);
+    if (navigator.share) {
+      navigator.share({ title: "Notas do dia", text: text }).catch(function () {});
+    } else {
+      copyDay(key);
+    }
+  }
 
   // ---------- Formatting ----------
 

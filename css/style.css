@@ -105,13 +105,16 @@ html, body {
 .empty-msg { color: var(--text-dim); text-align: center; margin-top: 24px; font-size: 14px; }
 
 .field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--text-dim); }
-.field input[type="text"] {
+.field input[type="text"],
+.field textarea {
   background: var(--card);
   border: none;
   border-radius: 12px;
   padding: 14px;
   font-size: 16px;
   color: var(--text);
+  font-family: inherit;
+  resize: vertical;
 }
 .field small { color: var(--text-dim); font-weight: 400; }
 
@@ -181,3 +184,51 @@ html, body {
 
 .run-controls { display: flex; gap: 10px; }
 .run-controls .btn { flex: 1; }
+
+.note-panel {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.note-panel-actions { display: flex; gap: 10px; }
+.note-panel-actions .btn { flex: 1; }
+
+.notes-days { display: flex; flex-direction: column; gap: 18px; }
+
+.notes-day-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.notes-day-header .day-label { font-weight: 700; font-size: 16px; flex: 1; }
+.notes-day-header button {
+  background: var(--bg-elevated);
+  border: none;
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.note-card {
+  background: var(--card);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  position: relative;
+}
+.note-card .meta { color: var(--text-dim); font-size: 12px; margin-bottom: 4px; }
+.note-card .text { font-size: 15px; white-space: pre-wrap; }
+.note-card .delete-note {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: var(--danger);
+  font-size: 16px;
+}

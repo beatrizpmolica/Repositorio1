@@ -26,6 +26,7 @@
     <div class="home-actions">
       <button id="btn-new-routine" class="btn btn-primary">+ Nova rotina</button>
       <button id="btn-quick-list" class="btn btn-secondary">⚡ Lista rápida</button>
+      <button id="btn-open-notes" class="btn btn-outline">📝 Notas do dia</button>
     </div>
 
     <div id="routines-list" class="routines-list"></div>
@@ -59,6 +60,7 @@
     <header class="topbar">
       <button id="btn-stop-run" class="btn-icon" aria-label="Parar">✕</button>
       <div id="run-progress" class="run-progress"></div>
+      <button id="btn-toggle-note" class="btn-icon" aria-label="Nota">📝</button>
     </header>
 
     <div id="run-routine-name" class="run-routine-name"></div>
@@ -67,6 +69,17 @@
       <div id="run-task-name" class="run-task-name">Tarefa</div>
       <div id="run-timer" class="run-timer">00:00</div>
       <div id="run-status" class="run-status"></div>
+    </div>
+
+    <div id="note-panel" class="note-panel" hidden>
+      <label class="field">
+        <span>Nota sobre esta tarefa <small>toque no microfone do teclado para ditar</small></span>
+        <textarea id="note-text" rows="3" placeholder="Ex: essa tarefa está demorando mais que o previsto porque..."></textarea>
+      </label>
+      <div class="note-panel-actions">
+        <button id="btn-cancel-note" class="btn btn-outline">Cancelar</button>
+        <button id="btn-save-note" class="btn btn-primary">Salvar nota</button>
+      </div>
     </div>
 
     <div id="run-controls-active" class="run-controls">
@@ -81,6 +94,17 @@
     <div id="run-controls-finished" class="run-controls" hidden>
       <button id="btn-finish-home" class="btn btn-primary btn-big">🎉 Voltar ao início</button>
     </div>
+  </section>
+
+  <!-- NOTES -->
+  <section id="view-notes" class="view" hidden>
+    <header class="topbar">
+      <button id="btn-back-from-notes" class="btn-icon" aria-label="Voltar">←</button>
+      <h1>Notas</h1>
+    </header>
+
+    <div id="notes-days" class="notes-days"></div>
+    <p id="notes-empty" class="empty-msg" hidden>Nenhuma nota ainda. Durante uma rotina, toque no ícone 📝 para registrar observações.</p>
   </section>
 
 </div>
