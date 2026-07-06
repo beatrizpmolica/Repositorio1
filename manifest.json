@@ -1,0 +1,15 @@
+{
+  "name": "Foco em Passos",
+  "short_name": "Foco",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#141019",
+  "theme_color": "#141019",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
