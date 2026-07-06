@@ -23,9 +23,17 @@
       <h1>Minhas Rotinas</h1>
     </header>
 
+    <div id="now-card" class="now-card">
+      <div class="now-label">Agora</div>
+      <div id="now-block-text" class="now-block-text">—</div>
+      <button id="btn-start-now-block" class="btn btn-primary" hidden>▶ Iniciar rotina</button>
+      <div id="next-block-text" class="next-block-text"></div>
+    </div>
+
     <div class="home-actions">
       <button id="btn-new-routine" class="btn btn-primary">+ Nova rotina</button>
       <button id="btn-quick-list" class="btn btn-secondary">⚡ Lista rápida</button>
+      <button id="btn-open-schedule" class="btn btn-outline">🗓️ Agenda semanal</button>
       <button id="btn-open-notes" class="btn btn-outline">📝 Notas do dia</button>
       <button id="btn-open-history" class="btn btn-outline">📊 Histórico</button>
     </div>
@@ -114,6 +122,21 @@
 
     <div id="notes-days" class="notes-days"></div>
     <p id="notes-empty" class="empty-msg" hidden>Nenhuma nota ainda. Durante uma rotina, toque no ícone 📝 para registrar observações.</p>
+  </section>
+
+  <!-- SCHEDULE -->
+  <section id="view-schedule" class="view" hidden>
+    <header class="topbar">
+      <button id="btn-back-from-schedule" class="btn-icon" aria-label="Voltar">←</button>
+      <h1>Agenda semanal</h1>
+    </header>
+
+    <div id="schedule-day-tabs" class="schedule-day-tabs"></div>
+
+    <div id="schedule-blocks" class="schedule-blocks"></div>
+
+    <button id="btn-add-block" class="btn btn-outline">+ Adicionar bloco</button>
+    <p class="hint-text">As alterações são salvas automaticamente. Vincule um bloco a uma rotina salva para poder iniciá-la direto da tela inicial.</p>
   </section>
 
   <!-- HISTORY -->

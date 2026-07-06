@@ -4,6 +4,7 @@
   var STORAGE_KEY = "focoEmPassos.routines.v1";
   var NOTES_STORAGE_KEY = "focoEmPassos.notes.v1";
   var SESSION_LOG_KEY = "focoEmPassos.sessionLog.v1";
+  var SCHEDULE_KEY = "focoEmPassos.schedule.v1";
 
   var views = {
     home: document.getElementById("view-home"),
@@ -11,6 +12,7 @@
     run: document.getElementById("view-run"),
     notes: document.getElementById("view-notes"),
     history: document.getElementById("view-history"),
+    schedule: document.getElementById("view-schedule"),
   };
 
   function showView(name) {
@@ -62,6 +64,74 @@
 
   function saveSessionLog(log) {
     localStorage.setItem(SESSION_LOG_KEY, JSON.stringify(log));
+  }
+
+  function loadSchedule() {
+    try {
+      var raw = localStorage.getItem(SCHEDULE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveSchedule(schedule) {
+    localStorage.setItem(SCHEDULE_KEY, JSON.stringify(schedule));
+  }
+
+  // Seed data imported from the user's "Rotina MVP" weekly spreadsheet.
+  // Rows are [start, end, spec] where spec is either a string (same label
+  // every day) or an object keyed by day (seg/ter/qua/qui/sex/sab/dom) with
+  // "default" as the fallback and null meaning "no block that day".
+  var SCHEDULE_SEED_ROWS = [
+    ["23:30", "07:30", "Sono (mínimo 7h)"],
+    ["07:30", "08:10", "Acordar + higiene + café"],
+    ["08:10", "08:20", "Organização da casa"],
+    ["08:20", "09:20", { seg: "Atividade física (mínimo 30 min) + Story + Planejamento semanal", default: "Atividade física (mínimo 30 min) + Story" }],
+    ["09:20", "09:50", { seg: "Planejamento semanal", default: "Banho" }],
+    ["09:50", "10:00", "Abertura do dia"],
+    ["10:00", "12:00", { sab: "Leads / prospecção", dom: "Descanso", default: "Clientes / operacional" }],
+    ["12:00", "13:00", { dom: "Almoço (Família)", default: "Almoço + descanso" }],
+    ["13:00", "14:00", { sab: "Organização das refeições da semana", dom: "Lazer (Família)", default: "Contato clientes" }],
+    ["14:00", "15:00", { sab: null, dom: "Lazer (Família)", default: "Leads / prospecção" }],
+    ["15:00", "15:15", "Pausa"],
+    ["15:15", "16:15", { sab: "Livre", dom: "Livre", default: "Follow-up" }],
+    ["16:15", "17:15", { sab: "Livre", dom: "Livre", default: "Onboarding" }],
+    ["17:15", "17:30", "Pausa"],
+    ["17:30", "18:30", { sab: "Livre", dom: "Planejamento semanal", default: "Criação de manuais" }],
+    ["18:30", "19:30", { sex: "Gestão estratégica", sab: "Livre", dom: "Livre", default: "Estudo" }],
+    ["19:30", "20:30", "Jantar + descanso"],
+    ["20:30", "21:00", "Descanso cognitivo"],
+    ["21:00", "21:10", "Organização da casa"],
+    ["21:10", "21:40", "Encerramento do dia"],
+    ["21:40", "22:40", "Desacelerar"],
+    ["22:40", "23:00", "Deitar"],
+  ];
+
+  var SCHEDULE_DAY_KEY_TO_INDEX = { dom: 0, seg: 1, ter: 2, qua: 3, qui: 4, sex: 5, sab: 6 };
+
+  function buildSeedSchedule() {
+    var schedule = [[], [], [], [], [], [], []];
+    Object.keys(SCHEDULE_DAY_KEY_TO_INDEX).forEach(function (dayKey) {
+      SCHEDULE_SEED_ROWS.forEach(function (row) {
+        var start = row[0];
+        var end = row[1];
+        var spec = row[2];
+        var label = typeof spec === "string" ? spec : Object.prototype.hasOwnProperty.call(spec, dayKey) ? spec[dayKey] : spec.default;
+        if (!label) return;
+        schedule[SCHEDULE_DAY_KEY_TO_INDEX[dayKey]].push({ id: uid(), start: start, end: end, label: label, routineId: null });
+      });
+    });
+    return schedule;
+  }
+
+  function ensureScheduleSeeded() {
+    var schedule = loadSchedule();
+    if (!schedule) {
+      schedule = buildSeedSchedule();
+      saveSchedule(schedule);
+    }
+    return schedule;
   }
 
   // ---------- Speech ----------
@@ -139,6 +209,7 @@
   var routinesEmptyEl = document.getElementById("routines-empty");
 
   function renderHome() {
+    renderNowCard();
     var routines = loadRoutines();
     routinesListEl.innerHTML = "";
     routinesEmptyEl.hidden = routines.length > 0;
@@ -205,6 +276,10 @@
   document.getElementById("btn-open-history").addEventListener("click", function () {
     renderHistoryView();
     showView("history");
+  });
+  document.getElementById("btn-open-schedule").addEventListener("click", function () {
+    openScheduleView();
+    showView("schedule");
   });
 
   document.getElementById("btn-export-routines").addEventListener("click", function () {
@@ -903,6 +978,205 @@
   function shareHistoryDay(key) {
     shareOrCopyText("Histórico do dia", textForHistoryDay(key), "Histórico copiado! Cole no Notion.");
   }
+
+  // ---------- Weekly schedule view ----------
+
+  var DAY_LABELS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+  var DAY_LABELS_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+  var scheduleDayTabsEl = document.getElementById("schedule-day-tabs");
+  var scheduleBlocksEl = document.getElementById("schedule-blocks");
+  var selectedScheduleDay = new Date().getDay();
+
+  document.getElementById("btn-back-from-schedule").addEventListener("click", function () {
+    renderHome();
+    showView("home");
+  });
+
+  function openScheduleView() {
+    selectedScheduleDay = new Date().getDay();
+    renderScheduleView();
+  }
+
+  function renderScheduleView() {
+    scheduleDayTabsEl.innerHTML = "";
+    DAY_LABELS_SHORT.forEach(function (label, index) {
+      var btn = document.createElement("button");
+      btn.textContent = label;
+      if (index === selectedScheduleDay) btn.classList.add("active");
+      btn.addEventListener("click", function () {
+        selectedScheduleDay = index;
+        renderScheduleView();
+      });
+      scheduleDayTabsEl.appendChild(btn);
+    });
+
+    renderScheduleBlocksList();
+  }
+
+  function renderScheduleBlocksList() {
+    var schedule = ensureScheduleSeeded();
+    var blocks = schedule[selectedScheduleDay] || [];
+    var routines = loadRoutines();
+
+    scheduleBlocksEl.innerHTML = "";
+    blocks.forEach(function (block) {
+      var row = document.createElement("div");
+      row.className = "schedule-block-row";
+
+      var routineOptions = '<option value="">— nenhuma rotina —</option>';
+      routines.forEach(function (r) {
+        routineOptions += '<option value="' + r.id + '">' + r.name + "</option>";
+      });
+
+      row.innerHTML =
+        '<input class="block-time block-start" type="time">' +
+        '<span class="block-time-sep">–</span>' +
+        '<input class="block-time block-end" type="time">' +
+        '<input class="block-label" type="text" placeholder="Nome do bloco" maxlength="80">' +
+        '<select class="block-routine">' +
+        routineOptions +
+        "</select>" +
+        '<button class="remove-block" aria-label="Remover">✕</button>';
+
+      row.querySelector(".block-start").value = block.start;
+      row.querySelector(".block-end").value = block.end;
+      row.querySelector(".block-label").value = block.label;
+      row.querySelector(".block-routine").value = block.routineId || "";
+
+      row.querySelector(".block-start").addEventListener("change", function (e) {
+        block.start = e.target.value;
+        persistScheduleBlocks();
+      });
+      row.querySelector(".block-end").addEventListener("change", function (e) {
+        block.end = e.target.value;
+        persistScheduleBlocks();
+      });
+      row.querySelector(".block-label").addEventListener("input", function (e) {
+        block.label = e.target.value;
+        persistScheduleBlocks();
+      });
+      row.querySelector(".block-routine").addEventListener("change", function (e) {
+        block.routineId = e.target.value || null;
+        persistScheduleBlocks();
+      });
+      row.querySelector(".remove-block").addEventListener("click", function () {
+        blocks = blocks.filter(function (b) {
+          return b.id !== block.id;
+        });
+        schedule[selectedScheduleDay] = blocks;
+        saveSchedule(schedule);
+        renderScheduleBlocksList();
+      });
+
+      scheduleBlocksEl.appendChild(row);
+    });
+
+    function persistScheduleBlocks() {
+      schedule[selectedScheduleDay] = blocks;
+      saveSchedule(schedule);
+    }
+  }
+
+  document.getElementById("btn-add-block").addEventListener("click", function () {
+    var schedule = ensureScheduleSeeded();
+    schedule[selectedScheduleDay].push({ id: uid(), start: "08:00", end: "09:00", label: "", routineId: null });
+    saveSchedule(schedule);
+    renderScheduleBlocksList();
+  });
+
+  // ---------- Now card (current/next schedule block) ----------
+
+  var nowBlockTextEl = document.getElementById("now-block-text");
+  var nextBlockTextEl = document.getElementById("next-block-text");
+  var startNowBlockBtn = document.getElementById("btn-start-now-block");
+  var pendingNowBlockRoutineId = null;
+
+  function timeToMinutes(hhmm) {
+    var parts = hhmm.split(":");
+    return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+  }
+
+  function blockContainsMinutes(block, minutes) {
+    var start = timeToMinutes(block.start);
+    var end = timeToMinutes(block.end);
+    if (end > start) return minutes >= start && minutes < end;
+    return minutes >= start || minutes < end;
+  }
+
+  function getCurrentAndNextBlock() {
+    var schedule = ensureScheduleSeeded();
+    var now = new Date();
+    var dayIndex = now.getDay();
+    var minutes = now.getHours() * 60 + now.getMinutes();
+    var todayBlocks = schedule[dayIndex] || [];
+
+    var current = todayBlocks.find(function (b) {
+      return blockContainsMinutes(b, minutes);
+    });
+
+    var upcoming = todayBlocks
+      .filter(function (b) {
+        return timeToMinutes(b.start) > minutes;
+      })
+      .sort(function (a, b) {
+        return timeToMinutes(a.start) - timeToMinutes(b.start);
+      });
+
+    var next = null;
+    if (upcoming.length > 0) {
+      next = { block: upcoming[0], dayPrefix: "" };
+    } else {
+      var tomorrowIndex = (dayIndex + 1) % 7;
+      var tomorrowBlocks = (schedule[tomorrowIndex] || []).slice().sort(function (a, b) {
+        return timeToMinutes(a.start) - timeToMinutes(b.start);
+      });
+      if (tomorrowBlocks.length > 0) {
+        next = { block: tomorrowBlocks[0], dayPrefix: "Amanhã " };
+      }
+    }
+
+    return { current: current, next: next };
+  }
+
+  function renderNowCard() {
+    var result = getCurrentAndNextBlock();
+
+    if (result.current) {
+      nowBlockTextEl.textContent = result.current.label + " · " + result.current.start + "–" + result.current.end;
+      if (result.current.routineId) {
+        pendingNowBlockRoutineId = result.current.routineId;
+        startNowBlockBtn.hidden = false;
+      } else {
+        pendingNowBlockRoutineId = null;
+        startNowBlockBtn.hidden = true;
+      }
+    } else {
+      nowBlockTextEl.textContent = "Sem bloco definido agora";
+      pendingNowBlockRoutineId = null;
+      startNowBlockBtn.hidden = true;
+    }
+
+    if (result.next) {
+      nextBlockTextEl.textContent = "Próximo: " + result.next.dayPrefix + result.next.block.label + " às " + result.next.block.start;
+    } else {
+      nextBlockTextEl.textContent = "";
+    }
+  }
+
+  startNowBlockBtn.addEventListener("click", function () {
+    if (!pendingNowBlockRoutineId) return;
+    var routine = loadRoutines().find(function (r) {
+      return r.id === pendingNowBlockRoutineId;
+    });
+    if (!routine) {
+      alert("A rotina vinculada a este bloco não existe mais.");
+      return;
+    }
+    requestStart(routine.tasks, routine.name);
+  });
+
+  setInterval(renderNowCard, 30000);
 
   // ---------- Formatting ----------
 
