@@ -125,11 +125,12 @@ html, body {
   border-radius: var(--radius);
   padding: 12px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
 .task-row .task-name {
-  flex: 1;
+  flex: 1 1 100%;
   min-width: 0;
   background: var(--bg-elevated);
   border: none;
@@ -149,6 +150,15 @@ html, body {
   text-align: center;
 }
 .task-row .task-unit { color: var(--text-dim); font-size: 13px; }
+.task-row .task-extra-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-dim);
+  font-size: 13px;
+  margin-left: auto;
+}
+.task-row .task-extra-toggle input { width: 16px; height: 16px; }
 .task-row .remove-task {
   background: transparent;
   border: none;
@@ -157,7 +167,33 @@ html, body {
   padding: 4px 8px;
 }
 
+.hint-text { color: var(--text-dim); font-size: 13px; margin: 0; }
+
 .editor-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+}
+.modal-overlay[hidden] { display: none; }
+.modal-card {
+  background: var(--bg-elevated);
+  border-radius: var(--radius);
+  padding: 24px 20px;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.modal-card h2 { margin: 0; font-size: 20px; text-align: center; }
+.modal-subtitle { margin: 0 0 8px; color: var(--text-dim); font-size: 14px; text-align: center; }
 
 .run-progress { flex: 1; text-align: right; color: var(--text-dim); font-size: 14px; }
 .run-routine-name { text-align: center; color: var(--text-dim); font-size: 14px; }

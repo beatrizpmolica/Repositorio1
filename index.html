@@ -48,6 +48,7 @@
     <div id="tasks-list" class="tasks-list"></div>
 
     <button id="btn-add-task" class="btn btn-outline">+ Adicionar tarefa</button>
+    <p class="hint-text">Marque "Ideal" nas tarefas extras que só entram no dia completo. As demais são o MVP essencial.</p>
 
     <div class="editor-actions">
       <button id="btn-start-now" class="btn btn-primary">▶ Iniciar agora</button>
@@ -106,6 +107,17 @@
     <div id="notes-days" class="notes-days"></div>
     <p id="notes-empty" class="empty-msg" hidden>Nenhuma nota ainda. Durante uma rotina, toque no ícone 📝 para registrar observações.</p>
   </section>
+
+  <!-- MODE SELECT MODAL -->
+  <div id="mode-select-overlay" class="modal-overlay" hidden>
+    <div class="modal-card">
+      <h2>Como você está hoje?</h2>
+      <p class="modal-subtitle">Essa rotina tem tarefas extras do modo Ideal.</p>
+      <button id="btn-mode-mvp" class="btn btn-secondary btn-big">⚡ Modo MVP (essencial)</button>
+      <button id="btn-mode-ideal" class="btn btn-primary btn-big">🌟 Modo Ideal (completo)</button>
+      <button id="btn-mode-cancel" class="btn btn-outline">Cancelar</button>
+    </div>
+  </div>
 
 </div>
 

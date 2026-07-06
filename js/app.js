@@ -144,19 +144,26 @@
         '<button class="edit" aria-label="Editar">✎</button>' +
         '<button class="play" aria-label="Iniciar">▶</button>';
 
-      card.querySelector(".name").textContent = routine.name;
-      card.querySelector(".meta").textContent =
+      var extraCount = routine.tasks.filter(function (t) {
+        return t.isExtra;
+      }).length;
+      var mvpCount = routine.tasks.length - extraCount;
+      var metaText =
         routine.tasks.length +
         (routine.tasks.length === 1 ? " tarefa · " : " tarefas · ") +
         formatDuration(totalSeconds) +
         " no total";
+      if (extraCount > 0) {
+        metaText += " (" + mvpCount + " MVP + " + extraCount + " ideal)";
+      }
+      card.querySelector(".name").textContent = routine.name;
+      card.querySelector(".meta").textContent = metaText;
 
       card.querySelector(".edit").addEventListener("click", function () {
         openEditor(routine);
       });
       card.querySelector(".play").addEventListener("click", function () {
-        unlockSpeech();
-        startRun(routine.tasks, routine.name);
+        requestStart(routine.tasks, routine.name);
       });
 
       routinesListEl.appendChild(card);
@@ -190,7 +197,7 @@
         id: routine.id,
         quick: false,
         tasks: routine.tasks.map(function (t) {
-          return { id: t.id, name: t.name, durationSeconds: t.durationSeconds };
+          return { id: t.id, name: t.name, durationSeconds: t.durationSeconds, isExtra: !!t.isExtra };
         }),
       };
       editorTitleEl.textContent = "Editar rotina";
@@ -208,7 +215,7 @@
   }
 
   function addTaskRow() {
-    editorState.tasks.push({ id: uid(), name: "", durationSeconds: 300 });
+    editorState.tasks.push({ id: uid(), name: "", durationSeconds: 300, isExtra: false });
     renderTasksList();
   }
 
@@ -221,13 +228,16 @@
         '<input class="task-name" type="text" placeholder="Nome da tarefa" maxlength="80">' +
         '<input class="task-duration" type="number" min="1" max="240" inputmode="numeric">' +
         '<span class="task-unit">min</span>' +
+        '<label class="task-extra-toggle"><input type="checkbox" class="task-extra"> Ideal</label>' +
         '<button class="remove-task" aria-label="Remover">✕</button>';
 
       var nameInput = row.querySelector(".task-name");
       var durationInput = row.querySelector(".task-duration");
+      var extraCheckbox = row.querySelector(".task-extra");
 
       nameInput.value = task.name;
       durationInput.value = Math.round((task.durationSeconds / 60) * 10) / 10;
+      extraCheckbox.checked = !!task.isExtra;
 
       nameInput.addEventListener("input", function () {
         task.name = nameInput.value;
@@ -236,6 +246,9 @@
         var minutes = parseFloat(durationInput.value);
         if (isNaN(minutes) || minutes <= 0) minutes = 1;
         task.durationSeconds = Math.round(minutes * 60);
+      });
+      extraCheckbox.addEventListener("change", function () {
+        task.isExtra = extraCheckbox.checked;
       });
       row.querySelector(".remove-task").addEventListener("click", function () {
         editorState.tasks = editorState.tasks.filter(function (t) {
@@ -258,7 +271,7 @@
   function validEditorTasks() {
     return editorState.tasks
       .map(function (t) {
-        return { id: t.id, name: t.name.trim() || "Tarefa sem nome", durationSeconds: t.durationSeconds };
+        return { id: t.id, name: t.name.trim() || "Tarefa sem nome", durationSeconds: t.durationSeconds, isExtra: !!t.isExtra };
       })
       .filter(function (t) {
         return t.durationSeconds > 0;
@@ -292,8 +305,56 @@
       alert("Adicione pelo menos uma tarefa antes de iniciar.");
       return;
     }
+    requestStart(tasks, editorNameEl.value.trim() || "Lista rápida");
+  });
+
+  // ---------- Mode select (MVP vs Ideal) ----------
+
+  var modeOverlayEl = document.getElementById("mode-select-overlay");
+  var pendingStart = null; // { tasks, routineName }
+
+  function requestStart(tasks, routineName) {
+    var hasExtras = tasks.some(function (t) {
+      return t.isExtra;
+    });
+    if (!hasExtras) {
+      unlockSpeech();
+      startRun(tasks, routineName, null);
+      return;
+    }
+    pendingStart = { tasks: tasks, routineName: routineName };
+    modeOverlayEl.hidden = false;
+  }
+
+  document.getElementById("btn-mode-mvp").addEventListener("click", function () {
+    if (!pendingStart) return;
+    var tasks = pendingStart.tasks.filter(function (t) {
+      return !t.isExtra;
+    });
+    var name = pendingStart.routineName;
+    modeOverlayEl.hidden = true;
+    pendingStart = null;
+    if (tasks.length === 0) {
+      alert("Essa rotina não tem nenhuma tarefa MVP definida.");
+      return;
+    }
     unlockSpeech();
-    startRun(tasks, editorNameEl.value.trim() || "Lista rápida");
+    startRun(tasks, name, "Modo MVP");
+  });
+
+  document.getElementById("btn-mode-ideal").addEventListener("click", function () {
+    if (!pendingStart) return;
+    var tasks = pendingStart.tasks.slice();
+    var name = pendingStart.routineName;
+    modeOverlayEl.hidden = true;
+    pendingStart = null;
+    unlockSpeech();
+    startRun(tasks, name, "Modo Ideal");
+  });
+
+  document.getElementById("btn-mode-cancel").addEventListener("click", function () {
+    modeOverlayEl.hidden = true;
+    pendingStart = null;
   });
 
   // ---------- Run view ----------
@@ -341,9 +402,10 @@
     saveNotes(notes);
   }
 
-  function startRun(tasks, routineName) {
+  function startRun(tasks, routineName, modeLabel) {
     runState = {
       routineName: routineName,
+      modeLabel: modeLabel || null,
       tasks: tasks,
       index: 0,
       remainingSeconds: 0,
@@ -386,7 +448,7 @@
 
   function updateRunHeader() {
     var task = runState.tasks[runState.index];
-    runRoutineNameEl.textContent = runState.routineName;
+    runRoutineNameEl.textContent = runState.routineName + (runState.modeLabel ? " · " + runState.modeLabel : "");
     runProgressEl.textContent = "Tarefa " + (runState.index + 1) + " de " + runState.tasks.length;
     runTaskNameEl.textContent = task.name;
   }
