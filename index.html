@@ -27,10 +27,17 @@
       <button id="btn-new-routine" class="btn btn-primary">+ Nova rotina</button>
       <button id="btn-quick-list" class="btn btn-secondary">⚡ Lista rápida</button>
       <button id="btn-open-notes" class="btn btn-outline">📝 Notas do dia</button>
+      <button id="btn-open-history" class="btn btn-outline">📊 Histórico</button>
     </div>
 
     <div id="routines-list" class="routines-list"></div>
     <p id="routines-empty" class="empty-msg" hidden>Você ainda não tem rotinas salvas. Crie a primeira acima.</p>
+
+    <div class="home-io-actions">
+      <button id="btn-export-routines" class="btn-link">⬇️ Exportar rotinas</button>
+      <button id="btn-import-routines" class="btn-link">⬆️ Importar rotinas</button>
+      <input id="import-file-input" type="file" accept="application/json" hidden>
+    </div>
   </section>
 
   <!-- EDITOR -->
@@ -85,6 +92,7 @@
 
     <div id="run-controls-active" class="run-controls">
       <button id="btn-pause-resume" class="btn btn-outline">⏸ Pausar</button>
+      <button id="btn-complete-now" class="btn btn-primary">✓ Concluir</button>
       <button id="btn-skip" class="btn btn-outline">⏭ Pular</button>
     </div>
 
@@ -106,6 +114,17 @@
 
     <div id="notes-days" class="notes-days"></div>
     <p id="notes-empty" class="empty-msg" hidden>Nenhuma nota ainda. Durante uma rotina, toque no ícone 📝 para registrar observações.</p>
+  </section>
+
+  <!-- HISTORY -->
+  <section id="view-history" class="view" hidden>
+    <header class="topbar">
+      <button id="btn-back-from-history" class="btn-icon" aria-label="Voltar">←</button>
+      <h1>Histórico</h1>
+    </header>
+
+    <div id="history-days" class="notes-days"></div>
+    <p id="history-empty" class="empty-msg" hidden>Nenhum histórico ainda. Ele é registrado automaticamente conforme você conclui ou pula tarefas.</p>
   </section>
 
   <!-- MODE SELECT MODAL -->

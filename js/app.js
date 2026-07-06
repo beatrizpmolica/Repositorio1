@@ -3,12 +3,14 @@
 
   var STORAGE_KEY = "focoEmPassos.routines.v1";
   var NOTES_STORAGE_KEY = "focoEmPassos.notes.v1";
+  var SESSION_LOG_KEY = "focoEmPassos.sessionLog.v1";
 
   var views = {
     home: document.getElementById("view-home"),
     editor: document.getElementById("view-editor"),
     run: document.getElementById("view-run"),
     notes: document.getElementById("view-notes"),
+    history: document.getElementById("view-history"),
   };
 
   function showView(name) {
@@ -47,6 +49,19 @@
 
   function saveNotes(notes) {
     localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(notes));
+  }
+
+  function loadSessionLog() {
+    try {
+      var raw = localStorage.getItem(SESSION_LOG_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveSessionLog(log) {
+    localStorage.setItem(SESSION_LOG_KEY, JSON.stringify(log));
   }
 
   // ---------- Speech ----------
@@ -148,13 +163,20 @@
         return t.isExtra;
       }).length;
       var mvpCount = routine.tasks.length - extraCount;
+      var mvpSeconds = routine.tasks
+        .filter(function (t) {
+          return !t.isExtra;
+        })
+        .reduce(function (sum, t) {
+          return sum + t.durationSeconds;
+        }, 0);
       var metaText =
         routine.tasks.length +
         (routine.tasks.length === 1 ? " tarefa · " : " tarefas · ") +
         formatDuration(totalSeconds) +
         " no total";
       if (extraCount > 0) {
-        metaText += " (" + mvpCount + " MVP + " + extraCount + " ideal)";
+        metaText += " (" + mvpCount + " MVP + " + extraCount + " ideal) · " + formatDuration(mvpSeconds) + " no MVP";
       }
       card.querySelector(".name").textContent = routine.name;
       card.querySelector(".meta").textContent = metaText;
@@ -179,6 +201,63 @@
   document.getElementById("btn-open-notes").addEventListener("click", function () {
     renderNotesView();
     showView("notes");
+  });
+  document.getElementById("btn-open-history").addEventListener("click", function () {
+    renderHistoryView();
+    showView("history");
+  });
+
+  document.getElementById("btn-export-routines").addEventListener("click", function () {
+    var routines = loadRoutines();
+    if (routines.length === 0) {
+      alert("Você ainda não tem rotinas salvas para exportar.");
+      return;
+    }
+    var json = JSON.stringify(routines, null, 2);
+    var blob = new Blob([json], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "rotinas-foco-em-passos.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  var importFileInput = document.getElementById("import-file-input");
+
+  document.getElementById("btn-import-routines").addEventListener("click", function () {
+    importFileInput.value = "";
+    importFileInput.click();
+  });
+
+  importFileInput.addEventListener("change", function () {
+    var file = importFileInput.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var imported;
+      try {
+        imported = JSON.parse(reader.result);
+      } catch (e) {
+        alert("Arquivo inválido. Não foi possível ler o JSON.");
+        return;
+      }
+      if (!Array.isArray(imported)) {
+        alert("Arquivo inválido. Esperado uma lista de rotinas.");
+        return;
+      }
+      var current = loadRoutines();
+      var ok = confirm(
+        "Isso vai substituir suas " + current.length + " rotinas atuais por " + imported.length + " rotinas importadas. Continuar?"
+      );
+      if (!ok) return;
+      saveRoutines(imported);
+      renderHome();
+      alert("Rotinas importadas com sucesso!");
+    };
+    reader.readAsText(file);
   });
 
   // ---------- Editor view ----------
@@ -423,6 +502,7 @@
     var task = runState.tasks[index];
     runState.remainingSeconds = task.durationSeconds;
     runState.endTimestamp = Date.now() + task.durationSeconds * 1000;
+    runState.taskStartedAt = Date.now();
     runState.paused = false;
     runState.waiting = false;
 
@@ -455,22 +535,27 @@
 
   function tick() {
     if (runState.paused) return;
-    var remaining = Math.max(0, Math.round((runState.endTimestamp - Date.now()) / 1000));
-    runState.remainingSeconds = remaining;
-    runTimerEl.textContent = formatClock(remaining);
+    var now = Date.now();
 
-    if (remaining <= 0) {
-      onTaskTimeUp();
+    if (!runState.waiting) {
+      var remaining = Math.max(0, Math.round((runState.endTimestamp - now) / 1000));
+      runState.remainingSeconds = remaining;
+      runTimerEl.textContent = formatClock(remaining);
+      if (remaining <= 0) {
+        onTaskTimeUp();
+      }
+    } else {
+      var overtimeSeconds = Math.max(0, Math.round((now - runState.endTimestamp) / 1000));
+      runTimerEl.textContent = "+" + formatClock(overtimeSeconds);
     }
   }
 
   function onTaskTimeUp() {
-    clearInterval(timerInterval);
     runState.waiting = true;
     runTimerEl.classList.add("time-up");
     controlsActiveEl.hidden = true;
     controlsWaitingEl.hidden = false;
-    runStatusEl.textContent = "Tempo esgotado";
+    runStatusEl.textContent = "Tempo esgotado — cronômetro extra em andamento";
 
     var task = runState.tasks[runState.index];
     beep();
@@ -493,14 +578,39 @@
 
   document.getElementById("btn-skip").addEventListener("click", function () {
     if (!runState) return;
-    advanceTask();
+    advanceTask("skipped");
+  });
+
+  document.getElementById("btn-complete-now").addEventListener("click", function () {
+    if (!runState) return;
+    advanceTask("completed");
   });
 
   document.getElementById("btn-next").addEventListener("click", function () {
-    advanceTask();
+    advanceTask("completed");
   });
 
-  function advanceTask() {
+  function logTaskEvent(task, status, startedAt, endedAt) {
+    var log = loadSessionLog();
+    log.push({
+      id: uid(),
+      routineName: runState.routineName,
+      modeLabel: runState.modeLabel,
+      taskName: task.name,
+      plannedSeconds: task.durationSeconds,
+      actualSeconds: Math.max(0, Math.round((endedAt - startedAt) / 1000)),
+      status: status,
+      startedAt: startedAt,
+      endedAt: endedAt,
+    });
+    saveSessionLog(log);
+  }
+
+  function advanceTask(status) {
+    var task = runState.tasks[runState.index];
+    var endedAt = Date.now();
+    logTaskEvent(task, status, runState.taskStartedAt, endedAt);
+
     clearInterval(timerInterval);
     var nextIndex = runState.index + 1;
     if (nextIndex >= runState.tasks.length) {
@@ -644,13 +754,12 @@
     return lines.join("\n").trim();
   }
 
-  function copyDay(key) {
-    var text = textForDay(key);
+  function copyTextToClipboard(text, successMessage) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard
         .writeText(text)
         .then(function () {
-          alert("Notas copiadas! Cole no Notion.");
+          alert(successMessage);
         })
         .catch(function () {
           prompt("Copie o texto abaixo:", text);
@@ -660,13 +769,139 @@
     }
   }
 
-  function shareDay(key) {
-    var text = textForDay(key);
+  function shareOrCopyText(title, text, successMessage) {
     if (navigator.share) {
-      navigator.share({ title: "Notas do dia", text: text }).catch(function () {});
+      navigator.share({ title: title, text: text }).catch(function () {});
     } else {
-      copyDay(key);
+      copyTextToClipboard(text, successMessage);
     }
+  }
+
+  function copyDay(key) {
+    copyTextToClipboard(textForDay(key), "Notas copiadas! Cole no Notion.");
+  }
+
+  function shareDay(key) {
+    shareOrCopyText("Notas do dia", textForDay(key), "Notas copiadas! Cole no Notion.");
+  }
+
+  // ---------- History view ----------
+
+  var historyDaysEl = document.getElementById("history-days");
+  var historyEmptyEl = document.getElementById("history-empty");
+
+  document.getElementById("btn-back-from-history").addEventListener("click", function () {
+    renderHome();
+    showView("home");
+  });
+
+  function statusLabel(status) {
+    return status === "completed" ? "✅ Concluída" : "⏭ Pulada";
+  }
+
+  function renderHistoryView() {
+    var entries = loadSessionLog()
+      .slice()
+      .sort(function (a, b) {
+        return b.startedAt - a.startedAt;
+      });
+    historyDaysEl.innerHTML = "";
+    historyEmptyEl.hidden = entries.length > 0;
+
+    var dayMap = {};
+    var dayOrder = [];
+    entries.forEach(function (e) {
+      var key = dateKeyOf(e.startedAt);
+      if (!dayMap[key]) {
+        dayMap[key] = [];
+        dayOrder.push(key);
+      }
+      dayMap[key].push(e);
+    });
+
+    dayOrder.forEach(function (key) {
+      var dayEntries = dayMap[key];
+      var completedCount = dayEntries.filter(function (e) {
+        return e.status === "completed";
+      }).length;
+      var skippedCount = dayEntries.length - completedCount;
+
+      var dayEl = document.createElement("div");
+      dayEl.className = "notes-day";
+
+      var header = document.createElement("div");
+      header.className = "notes-day-header";
+      header.innerHTML =
+        '<span class="day-label"></span>' +
+        '<button class="copy-day">Copiar</button>' +
+        '<button class="share-day">Compartilhar</button>';
+      header.querySelector(".day-label").textContent =
+        formatDateLabel(key) + " (" + completedCount + " concluídas, " + skippedCount + " puladas)";
+      header.querySelector(".copy-day").addEventListener("click", function () {
+        copyHistoryDay(key);
+      });
+      header.querySelector(".share-day").addEventListener("click", function () {
+        shareHistoryDay(key);
+      });
+      dayEl.appendChild(header);
+
+      dayEntries.forEach(function (e) {
+        var card = document.createElement("div");
+        card.className = "note-card";
+        card.innerHTML = '<button class="delete-note" aria-label="Excluir">✕</button><div class="meta"></div><div class="text"></div>';
+        card.querySelector(".meta").textContent =
+          formatTime(e.startedAt) + "–" + formatTime(e.endedAt) + " · " + e.routineName + (e.modeLabel ? " (" + e.modeLabel + ")" : "");
+        card.querySelector(".text").textContent =
+          statusLabel(e.status) +
+          " — " +
+          e.taskName +
+          " · Planejado: " +
+          formatDuration(e.plannedSeconds) +
+          " · Real: " +
+          formatDuration(e.actualSeconds);
+        card.querySelector(".delete-note").addEventListener("click", function () {
+          deleteHistoryEntry(e.id);
+        });
+        dayEl.appendChild(card);
+      });
+
+      historyDaysEl.appendChild(dayEl);
+    });
+  }
+
+  function deleteHistoryEntry(id) {
+    var log = loadSessionLog().filter(function (e) {
+      return e.id !== id;
+    });
+    saveSessionLog(log);
+    renderHistoryView();
+  }
+
+  function textForHistoryDay(key) {
+    var entries = loadSessionLog()
+      .filter(function (e) {
+        return dateKeyOf(e.startedAt) === key;
+      })
+      .sort(function (a, b) {
+        return a.startedAt - b.startedAt;
+      });
+    var lines = ["Histórico — " + formatDateLabel(key), ""];
+    entries.forEach(function (e) {
+      lines.push(
+        "• [" + formatTime(e.startedAt) + "–" + formatTime(e.endedAt) + "] " + e.routineName + (e.modeLabel ? " (" + e.modeLabel + ")" : "") + " – " + e.taskName
+      );
+      lines.push("  Status: " + statusLabel(e.status) + " · Planejado: " + formatDuration(e.plannedSeconds) + " · Real: " + formatDuration(e.actualSeconds));
+      lines.push("");
+    });
+    return lines.join("\n").trim();
+  }
+
+  function copyHistoryDay(key) {
+    copyTextToClipboard(textForHistoryDay(key), "Histórico copiado! Cole no Notion.");
+  }
+
+  function shareHistoryDay(key) {
+    shareOrCopyText("Histórico do dia", textForHistoryDay(key), "Histórico copiado! Cole no Notion.");
   }
 
   // ---------- Formatting ----------
