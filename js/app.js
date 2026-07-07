@@ -1128,6 +1128,20 @@
       row.querySelector(".block-label").value = block.label;
       row.querySelector(".block-routine").value = block.routineId || "";
 
+      if (selectedScheduleDay === new Date().getDay()) {
+        var conflicts = findCalendarConflictsForBlock(block);
+        if (conflicts.length > 0) {
+          var warn = document.createElement("div");
+          warn.className = "block-calendar-conflict";
+          warn.textContent = conflicts
+            .map(function (ev) {
+              return "⚠️ Conflito: " + ev.summary + " (" + ev.startLabel + "–" + ev.endLabel + ")";
+            })
+            .join(" · ");
+          row.appendChild(warn);
+        }
+      }
+
       row.querySelector(".block-start").addEventListener("change", function (e) {
         var previous = block.start;
         block.start = e.target.value;
@@ -1187,11 +1201,113 @@
     renderScheduleBlocksList();
   });
 
+  // ---------- Google Calendar integration ----------
+
+  var GOOGLE_CLIENT_ID = "482420068622-3voa6i7o43dhqkjfvdj1losmaj36vo0r.apps.googleusercontent.com";
+  var GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+
+  var googleTokenClient = null;
+  var googleAccessToken = null;
+  var todayCalendarEvents = []; // [{ summary, startMinutes, endMinutes, startLabel, endLabel }]
+
+  var calendarStatusTextEl = document.getElementById("calendar-status-text");
+  var connectCalendarBtn = document.getElementById("btn-connect-calendar");
+
+  function initGoogleTokenClient() {
+    if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) return null;
+    if (googleTokenClient) return googleTokenClient;
+    googleTokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GOOGLE_CALENDAR_SCOPE,
+      callback: function (response) {
+        if (response.error) {
+          calendarStatusTextEl.textContent = "Não foi possível conectar ao Google Calendar.";
+          return;
+        }
+        googleAccessToken = response.access_token;
+        connectCalendarBtn.textContent = "🔄 Atualizar eventos";
+        fetchTodayCalendarEvents();
+      },
+    });
+    return googleTokenClient;
+  }
+
+  connectCalendarBtn.addEventListener("click", function () {
+    var client = initGoogleTokenClient();
+    if (!client) {
+      alert("O Google ainda não carregou. Tente novamente em alguns segundos.");
+      return;
+    }
+    client.requestAccessToken();
+  });
+
+  function pad2(n) {
+    return String(n).padStart(2, "0");
+  }
+
+  function fetchTodayCalendarEvents() {
+    if (!googleAccessToken) return;
+    calendarStatusTextEl.textContent = "Buscando eventos de hoje...";
+
+    var now = new Date();
+    var startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    var endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    var url =
+      "https://www.googleapis.com/calendar/v3/calendars/primary/events" +
+      "?timeMin=" + encodeURIComponent(startOfDay.toISOString()) +
+      "&timeMax=" + encodeURIComponent(endOfDay.toISOString()) +
+      "&singleEvents=true&orderBy=startTime";
+
+    fetch(url, { headers: { Authorization: "Bearer " + googleAccessToken } })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        todayCalendarEvents = (data.items || [])
+          .filter(function (ev) {
+            return ev.start && ev.start.dateTime;
+          })
+          .map(function (ev) {
+            var start = new Date(ev.start.dateTime);
+            var end = new Date(ev.end.dateTime);
+            return {
+              summary: ev.summary || "(sem título)",
+              startMinutes: start.getHours() * 60 + start.getMinutes(),
+              endMinutes: end.getHours() * 60 + end.getMinutes(),
+              startLabel: pad2(start.getHours()) + ":" + pad2(start.getMinutes()),
+              endLabel: pad2(end.getHours()) + ":" + pad2(end.getMinutes()),
+            };
+          });
+        calendarStatusTextEl.textContent = "✅ Conectado — " + todayCalendarEvents.length + " evento(s) hoje.";
+        renderNowCard();
+        if (!views.schedule.hidden) renderScheduleBlocksList();
+      })
+      .catch(function (err) {
+        calendarStatusTextEl.textContent = "Erro ao buscar eventos: " + err.message;
+      });
+  }
+
+  function minutesRangesOverlap(aStart, aEnd, bStart, bEnd) {
+    return aStart < bEnd && bStart < aEnd;
+  }
+
+  function findCalendarConflictsForBlock(block) {
+    if (!todayCalendarEvents.length) return [];
+    var blockRanges = blockToRanges(block);
+    return todayCalendarEvents.filter(function (ev) {
+      return blockRanges.some(function (r) {
+        return minutesRangesOverlap(r[0], r[1], ev.startMinutes, ev.endMinutes);
+      });
+    });
+  }
+
   // ---------- Now card (current/next schedule block) ----------
 
   var nowBlockTextEl = document.getElementById("now-block-text");
   var nextBlockTextEl = document.getElementById("next-block-text");
   var startNowBlockBtn = document.getElementById("btn-start-now-block");
+  var nowCalendarWarningEl = document.getElementById("now-calendar-warning");
   var pendingNowBlockRoutineId = null;
 
   function timeToMinutes(hhmm) {
@@ -1253,10 +1369,25 @@
         pendingNowBlockRoutineId = null;
         startNowBlockBtn.hidden = true;
       }
+
+      var conflicts = findCalendarConflictsForBlock(result.current);
+      if (conflicts.length > 0) {
+        nowCalendarWarningEl.textContent =
+          "⚠️ Conflito com o calendário: " +
+          conflicts
+            .map(function (ev) {
+              return ev.summary + " (" + ev.startLabel + "–" + ev.endLabel + ")";
+            })
+            .join(", ");
+        nowCalendarWarningEl.hidden = false;
+      } else {
+        nowCalendarWarningEl.hidden = true;
+      }
     } else {
       nowBlockTextEl.textContent = "Sem bloco definido agora";
       pendingNowBlockRoutineId = null;
       startNowBlockBtn.hidden = true;
+      nowCalendarWarningEl.hidden = true;
     }
 
     if (result.next) {

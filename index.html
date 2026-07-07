@@ -11,7 +11,8 @@
 <link rel="apple-touch-icon" href="icons/icon.svg">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=9">
+<link rel="stylesheet" href="css/style.css?v=10">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -28,6 +29,7 @@
       <div id="now-block-text" class="now-block-text">—</div>
       <button id="btn-start-now-block" class="btn btn-primary" hidden>▶ Iniciar rotina</button>
       <div id="next-block-text" class="next-block-text"></div>
+      <div id="now-calendar-warning" class="now-calendar-warning" hidden></div>
     </div>
 
     <div class="home-actions">
@@ -131,6 +133,11 @@
       <h1>Agenda semanal</h1>
     </header>
 
+    <div class="calendar-connect-area">
+      <button id="btn-connect-calendar" class="btn btn-outline">🔗 Conectar Google Calendar</button>
+      <div id="calendar-status-text" class="calendar-status-text">Conecte para ver conflitos com reuniões de hoje.</div>
+    </div>
+
     <div id="schedule-day-tabs" class="schedule-day-tabs"></div>
 
     <div id="schedule-blocks" class="schedule-blocks"></div>
@@ -169,6 +176,6 @@
 
 </div>
 
-<script src="js/app.js?v=9"></script>
+<script src="js/app.js?v=10"></script>
 </body>
 </html>
