@@ -1135,7 +1135,7 @@
           warn.className = "block-calendar-conflict";
           warn.textContent = conflicts
             .map(function (ev) {
-              return "⚠️ Conflito: " + ev.summary + " (" + ev.startLabel + "–" + ev.endLabel + ")";
+              return "⚠️ Conflito: " + ev.summary + " · " + ev.calendarSummary + " (" + ev.startLabel + "–" + ev.endLabel + ")";
             })
             .join(" · ");
           row.appendChild(warn);
@@ -1245,26 +1245,35 @@
     return String(n).padStart(2, "0");
   }
 
-  function fetchTodayCalendarEvents() {
-    if (!googleAccessToken) return;
-    calendarStatusTextEl.textContent = "Buscando eventos de hoje...";
-
-    var now = new Date();
-    var startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-    var endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-    var url =
-      "https://www.googleapis.com/calendar/v3/calendars/primary/events" +
-      "?timeMin=" + encodeURIComponent(startOfDay.toISOString()) +
-      "&timeMax=" + encodeURIComponent(endOfDay.toISOString()) +
-      "&singleEvents=true&orderBy=startTime";
-
-    fetch(url, { headers: { Authorization: "Bearer " + googleAccessToken } })
+  function fetchCalendarList() {
+    return fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=freeBusyReader", {
+      headers: { Authorization: "Bearer " + googleAccessToken },
+    })
       .then(function (res) {
         if (!res.ok) throw new Error("HTTP " + res.status);
         return res.json();
       })
       .then(function (data) {
-        todayCalendarEvents = (data.items || [])
+        return (data.items || []).filter(function (cal) {
+          return cal.selected !== false;
+        });
+      });
+  }
+
+  function fetchEventsForCalendar(calendar, startOfDay, endOfDay) {
+    var url =
+      "https://www.googleapis.com/calendar/v3/calendars/" + encodeURIComponent(calendar.id) + "/events" +
+      "?timeMin=" + encodeURIComponent(startOfDay.toISOString()) +
+      "&timeMax=" + encodeURIComponent(endOfDay.toISOString()) +
+      "&singleEvents=true&orderBy=startTime";
+
+    return fetch(url, { headers: { Authorization: "Bearer " + googleAccessToken } })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      })
+      .then(function (data) {
+        return (data.items || [])
           .filter(function (ev) {
             return ev.start && ev.start.dateTime;
           })
@@ -1273,13 +1282,40 @@
             var end = new Date(ev.end.dateTime);
             return {
               summary: ev.summary || "(sem título)",
+              calendarSummary: calendar.summary,
               startMinutes: start.getHours() * 60 + start.getMinutes(),
               endMinutes: end.getHours() * 60 + end.getMinutes(),
               startLabel: pad2(start.getHours()) + ":" + pad2(start.getMinutes()),
               endLabel: pad2(end.getHours()) + ":" + pad2(end.getMinutes()),
             };
           });
-        calendarStatusTextEl.textContent = "✅ Conectado — " + todayCalendarEvents.length + " evento(s) hoje.";
+      })
+      .catch(function () {
+        return []; // one calendar failing shouldn't block the others
+      });
+  }
+
+  function fetchTodayCalendarEvents() {
+    if (!googleAccessToken) return;
+    calendarStatusTextEl.textContent = "Buscando eventos de hoje...";
+
+    var now = new Date();
+    var startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    var endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+    fetchCalendarList()
+      .then(function (calendars) {
+        return Promise.all(
+          calendars.map(function (cal) {
+            return fetchEventsForCalendar(cal, startOfDay, endOfDay);
+          })
+        );
+      })
+      .then(function (eventLists) {
+        todayCalendarEvents = [].concat.apply([], eventLists).sort(function (a, b) {
+          return a.startMinutes - b.startMinutes;
+        });
+        calendarStatusTextEl.textContent = "✅ Conectado — " + todayCalendarEvents.length + " evento(s) hoje (todos os calendários visíveis).";
         renderNowCard();
         if (!views.schedule.hidden) renderScheduleBlocksList();
       })
@@ -1376,7 +1412,7 @@
           "⚠️ Conflito com o calendário: " +
           conflicts
             .map(function (ev) {
-              return ev.summary + " (" + ev.startLabel + "–" + ev.endLabel + ")";
+              return ev.summary + " · " + ev.calendarSummary + " (" + ev.startLabel + "–" + ev.endLabel + ")";
             })
             .join(", ");
         nowCalendarWarningEl.hidden = false;
