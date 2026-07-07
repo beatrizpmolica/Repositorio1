@@ -993,6 +993,90 @@
     showView("home");
   });
 
+  function blockToRanges(block) {
+    var s = timeToMinutes(block.start);
+    var e = timeToMinutes(block.end);
+    if (e > s) return [[s, e]];
+    if (e === s) return [[0, 1440]];
+    return [
+      [s, 1440],
+      [0, e],
+    ];
+  }
+
+  function rangesOverlap(r1, r2) {
+    return r1[0] < r2[1] && r2[0] < r1[1];
+  }
+
+  function blocksOverlap(a, b) {
+    var rangesA = blockToRanges(a);
+    var rangesB = blockToRanges(b);
+    for (var i = 0; i < rangesA.length; i++) {
+      for (var j = 0; j < rangesB.length; j++) {
+        if (rangesOverlap(rangesA[i], rangesB[j])) return true;
+      }
+    }
+    return false;
+  }
+
+  function findOverlappingBlock(blocks, target) {
+    return blocks.find(function (b) {
+      return b.id !== target.id && blocksOverlap(b, target);
+    });
+  }
+
+  function warnIfOverlapping(blocks, target) {
+    var conflict = findOverlappingBlock(blocks, target);
+    if (!conflict) return true;
+    return confirm('Esse horário sobrepõe com "' + conflict.label + '" (' + conflict.start + "–" + conflict.end + "). Deseja manter mesmo assim?");
+  }
+
+  document.getElementById("btn-export-schedule").addEventListener("click", function () {
+    var schedule = ensureScheduleSeeded();
+    var json = JSON.stringify(schedule, null, 2);
+    var blob = new Blob([json], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "agenda-foco-em-passos.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  var importScheduleFileInput = document.getElementById("import-schedule-file-input");
+
+  document.getElementById("btn-import-schedule").addEventListener("click", function () {
+    importScheduleFileInput.value = "";
+    importScheduleFileInput.click();
+  });
+
+  importScheduleFileInput.addEventListener("change", function () {
+    var file = importScheduleFileInput.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var imported;
+      try {
+        imported = JSON.parse(reader.result);
+      } catch (e) {
+        alert("Arquivo inválido. Não foi possível ler o JSON.");
+        return;
+      }
+      if (!Array.isArray(imported) || imported.length !== 7) {
+        alert("Arquivo inválido. Esperado uma agenda com 7 dias.");
+        return;
+      }
+      var ok = confirm("Isso vai substituir sua agenda semanal atual pela importada. Continuar?");
+      if (!ok) return;
+      saveSchedule(imported);
+      renderScheduleView();
+      alert("Agenda importada com sucesso!");
+    };
+    reader.readAsText(file);
+  });
+
   function openScheduleView() {
     selectedScheduleDay = new Date().getDay();
     renderScheduleView();
@@ -1045,11 +1129,23 @@
       row.querySelector(".block-routine").value = block.routineId || "";
 
       row.querySelector(".block-start").addEventListener("change", function (e) {
+        var previous = block.start;
         block.start = e.target.value;
+        if (!warnIfOverlapping(blocks, block)) {
+          block.start = previous;
+          e.target.value = previous;
+          return;
+        }
         persistScheduleBlocks();
       });
       row.querySelector(".block-end").addEventListener("change", function (e) {
+        var previous = block.end;
         block.end = e.target.value;
+        if (!warnIfOverlapping(blocks, block)) {
+          block.end = previous;
+          e.target.value = previous;
+          return;
+        }
         persistScheduleBlocks();
       });
       row.querySelector(".block-label").addEventListener("input", function (e) {
@@ -1080,7 +1176,13 @@
 
   document.getElementById("btn-add-block").addEventListener("click", function () {
     var schedule = ensureScheduleSeeded();
-    schedule[selectedScheduleDay].push({ id: uid(), start: "08:00", end: "09:00", label: "", routineId: null });
+    var blocks = schedule[selectedScheduleDay];
+    var newBlock = { id: uid(), start: "08:00", end: "09:00", label: "", routineId: null };
+    blocks.push(newBlock);
+    if (!warnIfOverlapping(blocks, newBlock)) {
+      blocks.pop();
+      return;
+    }
     saveSchedule(schedule);
     renderScheduleBlocksList();
   });

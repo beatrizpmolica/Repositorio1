@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/icon.svg">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=8">
+<link rel="stylesheet" href="css/style.css?v=9">
 </head>
 <body>
 
@@ -136,7 +136,13 @@
     <div id="schedule-blocks" class="schedule-blocks"></div>
 
     <button id="btn-add-block" class="btn btn-outline">+ Adicionar bloco</button>
-    <p class="hint-text">As alterações são salvas automaticamente. Vincule um bloco a uma rotina salva para poder iniciá-la direto da tela inicial.</p>
+    <p class="hint-text">As alterações são salvas automaticamente. Vincule um bloco a uma rotina salva para poder iniciá-la direto da tela inicial. Se dois blocos do mesmo dia se sobrepuserem, o app avisa antes de salvar.</p>
+
+    <div class="home-io-actions">
+      <button id="btn-export-schedule" class="btn-link">⬇️ Exportar agenda</button>
+      <button id="btn-import-schedule" class="btn-link">⬆️ Importar agenda</button>
+      <input id="import-schedule-file-input" type="file" accept="application/json" hidden>
+    </div>
   </section>
 
   <!-- HISTORY -->
@@ -163,6 +169,6 @@
 
 </div>
 
-<script src="js/app.js?v=8"></script>
+<script src="js/app.js?v=9"></script>
 </body>
 </html>
