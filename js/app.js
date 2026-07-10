@@ -351,7 +351,14 @@
         id: routine.id,
         quick: false,
         tasks: routine.tasks.map(function (t) {
-          return { id: t.id, name: t.name, durationSeconds: t.durationSeconds, isExtra: !!t.isExtra, repeatCount: t.repeatCount || null };
+          return {
+            id: t.id,
+            name: t.name,
+            durationSeconds: t.durationSeconds,
+            isExtra: !!t.isExtra,
+            repeatCount: t.repeatCount || null,
+            activeDays: t.activeDays || null,
+          };
         }),
       };
       editorTitleEl.textContent = "Editar rotina";
@@ -401,6 +408,13 @@
         row.appendChild(badge);
       }
 
+      if (task.activeDays) {
+        var daysBadge = document.createElement("div");
+        daysBadge.className = "hint-text";
+        daysBadge.textContent = "📅 Só em: " + task.activeDays.join(", ");
+        row.appendChild(daysBadge);
+      }
+
       nameInput.addEventListener("input", function () {
         task.name = nameInput.value;
       });
@@ -439,6 +453,7 @@
           durationSeconds: t.durationSeconds,
           isExtra: !!t.isExtra,
           repeatCount: t.repeatCount || null,
+          activeDays: t.activeDays || null,
         };
       })
       .filter(function (t) {
@@ -481,16 +496,33 @@
   var modeOverlayEl = document.getElementById("mode-select-overlay");
   var pendingStart = null; // { tasks, routineName }
 
+  var DAY_NAME_BY_INDEX = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+
+  function isTaskActiveToday(task) {
+    if (!task.activeDays) return true;
+    var todayName = DAY_NAME_BY_INDEX[new Date().getDay()];
+    return task.activeDays.indexOf(todayName) !== -1;
+  }
+
+  function filterActiveTasksToday(tasks) {
+    return tasks.filter(isTaskActiveToday);
+  }
+
   function requestStart(tasks, routineName) {
-    var hasExtras = tasks.some(function (t) {
+    var activeTasks = filterActiveTasksToday(tasks);
+    if (activeTasks.length === 0) {
+      alert("Nenhuma tarefa desta rotina está ativa hoje.");
+      return;
+    }
+    var hasExtras = activeTasks.some(function (t) {
       return t.isExtra;
     });
     if (!hasExtras) {
       unlockSpeech();
-      startRun(tasks, routineName, null);
+      startRun(activeTasks, routineName, null);
       return;
     }
-    pendingStart = { tasks: tasks, routineName: routineName };
+    pendingStart = { tasks: activeTasks, routineName: routineName };
     modeOverlayEl.hidden = false;
   }
 
