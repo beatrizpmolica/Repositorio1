@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/icon.svg">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=11">
+<link rel="stylesheet" href="css/style.css?v=12">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -87,6 +87,14 @@
       <div id="run-task-name" class="run-task-name">Tarefa</div>
       <div id="run-timer" class="run-timer">00:00</div>
       <div id="run-status" class="run-status"></div>
+
+      <div id="repeat-counter" class="repeat-counter" hidden>
+        <div id="repeat-progress-text" class="repeat-progress-text">0 de 0</div>
+        <div class="repeat-counter-buttons">
+          <button id="btn-repeat-minus" class="btn-icon" aria-label="Diminuir">−</button>
+          <button id="btn-repeat-plus" class="btn btn-primary">+1</button>
+        </div>
+      </div>
     </div>
 
     <div id="note-panel" class="note-panel" hidden>
@@ -176,6 +184,6 @@
 
 </div>
 
-<script src="js/app.js?v=11"></script>
+<script src="js/app.js?v=12"></script>
 </body>
 </html>

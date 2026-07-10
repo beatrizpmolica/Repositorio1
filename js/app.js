@@ -351,7 +351,7 @@
         id: routine.id,
         quick: false,
         tasks: routine.tasks.map(function (t) {
-          return { id: t.id, name: t.name, durationSeconds: t.durationSeconds, isExtra: !!t.isExtra };
+          return { id: t.id, name: t.name, durationSeconds: t.durationSeconds, isExtra: !!t.isExtra, repeatCount: t.repeatCount || null };
         }),
       };
       editorTitleEl.textContent = "Editar rotina";
@@ -393,6 +393,14 @@
       durationInput.value = Math.round((task.durationSeconds / 60) * 10) / 10;
       extraCheckbox.checked = !!task.isExtra;
 
+      if (task.repeatCount) {
+        var badge = document.createElement("div");
+        badge.className = "hint-text";
+        var idealText = task.repeatCount.ideal !== null && task.repeatCount.ideal !== undefined ? task.repeatCount.ideal : task.repeatCount.idealDescription;
+        badge.textContent = "🔢 Contador: MVP " + task.repeatCount.mvp + " · Ideal " + idealText + " (" + task.repeatCount.unit + ")";
+        row.appendChild(badge);
+      }
+
       nameInput.addEventListener("input", function () {
         task.name = nameInput.value;
       });
@@ -425,7 +433,13 @@
   function validEditorTasks() {
     return editorState.tasks
       .map(function (t) {
-        return { id: t.id, name: t.name.trim() || "Tarefa sem nome", durationSeconds: t.durationSeconds, isExtra: !!t.isExtra };
+        return {
+          id: t.id,
+          name: t.name.trim() || "Tarefa sem nome",
+          durationSeconds: t.durationSeconds,
+          isExtra: !!t.isExtra,
+          repeatCount: t.repeatCount || null,
+        };
       })
       .filter(function (t) {
         return t.durationSeconds > 0;
@@ -556,6 +570,56 @@
     saveNotes(notes);
   }
 
+  // ---------- Repeat counter (tasks with repeatCount) ----------
+
+  var repeatCounterEl = document.getElementById("repeat-counter");
+  var repeatProgressTextEl = document.getElementById("repeat-progress-text");
+
+  function pluralize(count, unit) {
+    return count === 1 ? unit : unit + "s";
+  }
+
+  function repeatTargetLabel(task, reachedMvp) {
+    if (!reachedMvp) return task.repeatCount.mvp + " " + pluralize(task.repeatCount.mvp, task.repeatCount.unit);
+    if (task.repeatCount.ideal !== null && task.repeatCount.ideal !== undefined) {
+      return task.repeatCount.ideal + " " + pluralize(task.repeatCount.ideal, task.repeatCount.unit);
+    }
+    return task.repeatCount.idealDescription;
+  }
+
+  function renderRepeatCounter() {
+    var task = runState.tasks[runState.index];
+    if (!task.repeatCount) {
+      repeatCounterEl.hidden = true;
+      return;
+    }
+    repeatCounterEl.hidden = false;
+    var count = runState.repeatCurrentCount;
+    var reachedMvp = count >= task.repeatCount.mvp;
+    repeatProgressTextEl.textContent = count + " de " + repeatTargetLabel(task, reachedMvp);
+    repeatCounterEl.classList.toggle("mvp-reached", reachedMvp);
+  }
+
+  document.getElementById("btn-repeat-plus").addEventListener("click", function () {
+    if (!runState) return;
+    var task = runState.tasks[runState.index];
+    if (!task.repeatCount) return;
+    runState.repeatCurrentCount += 1;
+    renderRepeatCounter();
+    if (!runState.repeatMvpAnnounced && runState.repeatCurrentCount >= task.repeatCount.mvp) {
+      runState.repeatMvpAnnounced = true;
+      speak("Meta MVP atingida!");
+    }
+  });
+
+  document.getElementById("btn-repeat-minus").addEventListener("click", function () {
+    if (!runState) return;
+    var task = runState.tasks[runState.index];
+    if (!task.repeatCount) return;
+    runState.repeatCurrentCount = Math.max(0, runState.repeatCurrentCount - 1);
+    renderRepeatCounter();
+  });
+
   function startRun(tasks, routineName, modeLabel) {
     runState = {
       routineName: routineName,
@@ -580,6 +644,8 @@
     runState.taskStartedAt = Date.now();
     runState.paused = false;
     runState.waiting = false;
+    runState.repeatCurrentCount = 0;
+    runState.repeatMvpAnnounced = false;
 
     controlsActiveEl.hidden = false;
     controlsWaitingEl.hidden = true;
@@ -590,6 +656,7 @@
     noteTextEl.value = "";
     notePanelEl.hidden = true;
 
+    renderRepeatCounter();
     updateRunHeader();
 
     if (opts.announce) {
@@ -677,6 +744,15 @@
       status: status,
       startedAt: startedAt,
       endedAt: endedAt,
+      repeatCount: task.repeatCount
+        ? {
+            unit: task.repeatCount.unit,
+            mvp: task.repeatCount.mvp,
+            ideal: task.repeatCount.ideal,
+            idealDescription: task.repeatCount.idealDescription,
+            achieved: runState.repeatCurrentCount,
+          }
+        : null,
     });
     saveSessionLog(log);
   }
@@ -874,6 +950,19 @@
     return status === "completed" ? "✅ Concluída" : "⏭ Pulada";
   }
 
+  function repeatCountSummary(rc) {
+    if (!rc) return "";
+    var parts = ["Contagem: " + rc.achieved + " " + pluralize(rc.achieved, rc.unit) + " (MVP: " + rc.mvp + ")"];
+    if (rc.achieved >= rc.mvp) {
+      if (rc.ideal !== null && rc.ideal !== undefined) {
+        parts.push(rc.achieved >= rc.ideal ? "bateu o Ideal (" + rc.ideal + ")" : "MVP batido, rumo ao Ideal (" + rc.ideal + ")");
+      } else {
+        parts.push("MVP batido — meta Ideal: " + rc.idealDescription);
+      }
+    }
+    return parts.join(" · ");
+  }
+
   function renderHistoryView() {
     var entries = loadSessionLog()
       .slice()
@@ -933,7 +1022,8 @@
           " · Planejado: " +
           formatDuration(e.plannedSeconds) +
           " · Real: " +
-          formatDuration(e.actualSeconds);
+          formatDuration(e.actualSeconds) +
+          (e.repeatCount ? " · " + repeatCountSummary(e.repeatCount) : "");
         card.querySelector(".delete-note").addEventListener("click", function () {
           deleteHistoryEntry(e.id);
         });
@@ -965,7 +1055,15 @@
       lines.push(
         "• [" + formatTime(e.startedAt) + "–" + formatTime(e.endedAt) + "] " + e.routineName + (e.modeLabel ? " (" + e.modeLabel + ")" : "") + " – " + e.taskName
       );
-      lines.push("  Status: " + statusLabel(e.status) + " · Planejado: " + formatDuration(e.plannedSeconds) + " · Real: " + formatDuration(e.actualSeconds));
+      lines.push(
+        "  Status: " +
+          statusLabel(e.status) +
+          " · Planejado: " +
+          formatDuration(e.plannedSeconds) +
+          " · Real: " +
+          formatDuration(e.actualSeconds) +
+          (e.repeatCount ? " · " + repeatCountSummary(e.repeatCount) : "")
+      );
       lines.push("");
     });
     return lines.join("\n").trim();
